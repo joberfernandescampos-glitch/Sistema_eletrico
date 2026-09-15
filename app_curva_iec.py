@@ -1,91 +1,97 @@
-import streamlit as st
-
-st.set_page_config(page_title="Portal de Engenharia", layout="centered")
-
-st.title("⚡ JÓBER FERNANDES - PORTAL DE ENGENHARIA")
-st.subheader("Bem-vindo ao seu ecossistema de ferramentas técnicas!")
-
-st.markdown("""
-Esta plataforma unifica suas principais ferramentas de cálculo e análise elétrica. 
-Use o **menu lateral esquerdo** para navegar e selecionar o módulo que deseja utilizar:
-
-* **Componentes Simétricas:** Análise fasorial e cálculo de sequências (Zero, Positiva e Negativa).
-* **Curvas IEC:** Dimensionamento e simulação de tempos de atuação de relés de proteção.
-* **Cálculo de Tensões:** Análise de níveis de tensão e quedas de circuito.
-""")
-
-st.info("💡 Se você estiver acessando pelo celular, clique na setinha ( > ) no topo superior esquerdo para abrir o menu de navegação!")
-
-import streamlit as st
+import cmath
+import math
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import streamlit as st
 
-# Configuração da página do Streamlit
-st.set_page_config(page_title="Calculadora de Curvas IEC", layout="centered")
-st.title("⚡JÓBER FERNANDES - Curvas IEC (Proteção)")
+# Configuração da página (Tema Escuro e Layout Amplo)
+st.set_page_config(
+    page_title="Sintetizador de Neutro", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
 
-# Dicionário com os parâmetros das curvas IEC (IEC 60255)
-CURVAS_IEC = {
-    "IEC Normal Inversa (NI)": (0.14, 0.02),
-    "IEC Muito Inversa (MI)": (13.5, 1.0),
-    "IEC Extremamente Inversa (EI)": (80.0, 2.0),
-    "IEC Longo Tempo Inversa (LTI)": (120.0, 1.0)
-}
+# Estilização CSS para forçar o tema Dark e ajustar os cards
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    div[data-testid="stBlock"] {
+        background-color: #161b22;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+    }
+    h1, h2, h3, h4, h5 { color: #ffffff !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- PAINEL LATERAL DE ENTRADAS ---
-st.sidebar.header("📋 Parâmetros de Entrada")
+# Função auxiliar para manter o ângulo entre -180° e 180°
+def ajustar_angulo(ang):
+    while ang > 180: ang -= 360
+    while ang <= -180: ang += 360
+    return ang
 
-# 1. Seleção da Curva IEC
-curva_selecionada = st.sidebar.selectbox("Selecione a Curva IEC:", list(CURVAS_IEC.keys()))
-k, alpha = CURVAS_IEC[curva_selecionada]
+# --- TÍTULO PRINCIPAL ---
+st.markdown("# ⚡ JÓBER FERNANDES - SINTETIZADOR DE NEUTRO")
+st.markdown("<p style='color: #8b949e;'>Estipule o valor da corrente que deseja que circule pelo Neutro (In). O sistema calculará o desequilíbrio exato necessário para as fases.</p>", unsafe_allow_html=True)
 
-# 2. Entradas de Corrente e Ajuste
-i_falta = st.sidebar.number_input("Corrente de Falta (I) [A]:", min_value=0.1, value=150.0, step=10.0)
-i_partida = st.sidebar.number_input("Corrente de Partida/Pick-up (I_p) [A]:", min_value=0.1, value=50.0, step=5.0)
-dial = st.sidebar.number_input("Dial de Tempo (TMS):", min_value=0.01, max_value=10.0, value=0.1, step=0.05)
+# --- 1. ENTRADA DE DADOS EM COLUNAS ---
+col_s1, col_s2 = st.columns(2)
 
-# --- CÁLCULO DO PONTO DE OPERAÇÃO ---
-multiplo_i = i_falta / i_partida
+with col_s1:
+    st.markdown("### 🎯 Neutro Alvo Desejado")
+    in_mag_alvo = st.number_input("Módulo do Neutro Desejado (In) [A]:", min_value=0.0, value=50.0, step=1.0, format="%.2f", key="in_m_alvo")
+    in_ang_alvo = st.number_input("Ângulo do Neutro Desejado (°) :", min_value=-360.0, max_value=360.0, value=0.0, step=1.0, format="%.2f", key="in_a_alvo")
 
-st.subheader("📊 Resultados do Ponto de Operação")
+with col_s2:
+    st.markdown("### ⚖️ Carga de Base Equilibrada")
+    i_base = st.number_input("Corrente de Base equilibrada para as Fases B e C [A]:", min_value=0.0, value=100.0, step=5.0, format="%.2f", key="i_base_fases")
 
-if multiplo_i <= 1.0:
-    st.error(f"A corrente de falta ({i_falta}A) é menor ou igual à corrente de partida ({i_partida}A). O relé não irá partir (Múltiplo M = {multiplo_i:.2f}).")
-    tempo_operacao = None
-else:
-    # Fórmula IEC: t = TMS * (k / (M^alpha - 1))
-    tempo_operacao = dial * (k / (multiplo_i**alpha - 1))
+# --- 2. PROCESSAMENTO MATEMÁTICO VETORIAL ---
+# Lógica: In = Ia + Ib + Ic  ->  Ia = In - Ib - Ic
+In_alvo = cmath.rect(in_mag_alvo, math.radians(in_ang_alvo))
+Ib_sint = cmath.rect(i_base, math.radians(240))  # Fase B fixa em 240° (-120°)
+Ic_sint = cmath.rect(i_base, math.radians(120))  # Fase C fixa em 120°
+
+Ia_sint = In_alvo - Ib_sint - Ic_sint
+mod_Ia_sint, ang_Ia_sint = cmath.polar(Ia_sint)
+ang_Ia_graus = ajustar_angulo(math.degrees(ang_Ia_sint))
+
+# --- 3. LAYOUT INFERIOR (Resultados à esquerda, Gráfico à direita) ---
+col_res, col_graf = st.columns([1, 2])
+
+with col_res:
+    st.markdown("### 📋 Resultados")
+    st.markdown("Ajuste as fases com os seguintes valores para obter o neutro desejado:")
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Múltiplo de Partida (M)", f"{multiplo_i:.2f} x")
-    col2.metric("Tempo de Atuação (t)", f"{tempo_operacao:.3f} s")
-    col3.metric("Constantes Usadas", f"k={k}, α={alpha}")
+    st.markdown(f"<span style='color:#ff4b4b;'>**Ia (Sintetizada) :**</span> {mod_Ia_sint:.4f}  |  {ang_Ia_graus:.2f}°  A", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#00cc96;'>**Ib (Base Fixa)   :**</span> {i_base:.4f}  |  -120.00°  A", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#636efa;'>**Ic (Base Fixa)   :**</span> {i_base:.4f}  |  120.00°  A", unsafe_allow_html=True)
+    
+    st.markdown("<br>**Neutro Resultante:**", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:orange;'>**In Conquistado :**</span> {in_mag_alvo:.4f}  |  {ajustar_angulo(in_ang_alvo):.2f}°  A", unsafe_allow_html=True)
 
-# --- PLOTAGEM DA CURVA CARACTERÍSTICA ---
-st.subheader("📈 Gráfico da Curva de Proteção")
-
-# Gerando múltiplos de corrente de 1.1 até 20 para desenhar a curva
-m_valores = np.linspace(1.1, 20.0, 500)
-tempos_curva = dial * (k / (m_valores**alpha - 1))
-
-# Criando o gráfico com Matplotlib
-fig, ax = plt.subplots(figsize=(8, 5))
-ax.plot(m_valores, tempos_curva, label=f"Curva {curva_selecionada}", color="blue", linewidth=2)
-
-# Se houver um ponto de operação válido, plota ele no gráfico
-if tempo_operacao is not None and multiplo_i <= 20.0:
-    ax.scatter([multiplo_i], [tempo_operacao], color="red", s=100, zorder=5, 
-               label=f"Ponto de Falta ({multiplo_i:.2f}x, {tempo_operacao:.2f}s)")
-    ax.axhline(y=tempo_operacao, color="red", linestyle="--", alpha=0.5)
-    ax.axvline(x=multiplo_i, color="red", linestyle="--", alpha=0.5)
-
-# Customização técnica do Gráfico (Escala Bilogarítmica tradicional de relés)
-ax.set_yscale('log')
-ax.set_title(f"Tempo Inverso - {curva_selecionada}", fontsize=12, fontweight='bold')
-ax.set_xlabel("Múltiplo da Corrente de Partida (I / I_p)", fontsize=10)
-ax.set_ylabel("Tempo de Atuação (segundos) - Escala Log", fontsize=10)
-ax.grid(True, which="both", linestyle=":", alpha=0.6)
-ax.legend()
-
-# Exibe o gráfico na página Web do Streamlit
-st.pyplot(fig)
+with col_graf:
+    st.markdown("### 📈 Diagrama Fasorial Interativo")
+    
+    fig = go.Figure()
+    
+    # Adicionando os fasores de fase
+    fig.add_trace(go.Scatterpolar(r=[0, mod_Ia_sint], theta=[0, ang_Ia_graus], mode='lines+markers', name='Ia (Sintetizada)', line=dict(color='#ff4b4b', width=3)))
+    fig.add_trace(go.Scatterpolar(r=[0, i_base], theta=[0, -120], mode='lines+markers', name='Ib (Base)', line=dict(color='#00cc96', width=3)))
+    fig.add_trace(go.Scatterpolar(r=[0, i_base], theta=[0, 120], mode='lines+markers', name='Ic (Base)', line=dict(color='#636efa', width=3)))
+    
+    # Adicionando o fasor de neutro resultante alvo
+    fig.add_trace(go.Scatterpolar(r=[0, in_mag_alvo], theta=[0, in_ang_alvo], mode='lines+markers', name='In Alvo', line=dict(color='orange', width=4, dash='dash')))
+    
+    # Configuração do gráfico polar interativo
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#161b22",
+        plot_bgcolor="#161b22",
+        margin=dict(l=40, r=40, t=40, b=40),
+        polar=dict(angularaxis=dict(direction="counterclockwise", period=360)),
+        height=450
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
