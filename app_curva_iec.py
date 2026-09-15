@@ -1,4 +1,22 @@
 import streamlit as st
+
+st.set_page_config(page_title="Portal de Engenharia", layout="centered")
+
+st.title("⚡ JÓBER FERNANDES - PORTAL DE ENGENHARIA")
+st.subheader("Bem-vindo ao seu ecossistema de ferramentas técnicas!")
+
+st.markdown("""
+Esta plataforma unifica suas principais ferramentas de cálculo e análise elétrica. 
+Use o **menu lateral esquerdo** para navegar e selecionar o módulo que deseja utilizar:
+
+* **Componentes Simétricas:** Análise fasorial e cálculo de sequências (Zero, Positiva e Negativa).
+* **Curvas IEC:** Dimensionamento e simulação de tempos de atuação de relés de proteção.
+* **Cálculo de Tensões:** Análise de níveis de tensão e quedas de circuito.
+""")
+
+st.info("💡 Se você estiver acessando pelo celular, clique na setinha ( > ) no topo superior esquerdo para abrir o menu de navegação!")
+
+import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
